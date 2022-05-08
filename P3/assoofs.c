@@ -6,6 +6,8 @@
 #include <linux/slab.h>
 #include "assoofs.h"
 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Pablo Morais Alvarez");
 
 //prototipos que he escrito yo===========================================
 extern int register_filesystem(struct file_system_type *);
@@ -15,6 +17,11 @@ extern struct dentry *mount_bdev(struct file_system_type *fs_type, int flags, co
 int assoofs_fill_super(struct super_block *sb, void *data, int silent);
 extern struct inode *new_inode(struct super_block *sb);
 struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64_t inode_no);
+static struct inode *assoofs_get_inode(struct super_block *sb,int ino);
+int assoofs_sb_get_a_freeblock(struct super_block *sb, uint64_t *block);
+void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode);
+int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *inode_info);
+
 //=======================================================================
 //Operaciones sobre ficheros
 
@@ -60,12 +67,77 @@ static struct inode_operations assoofs_inode_ops = {
 };
 
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags){
+	struct assoofs_inode_info *parent_info = parent_inode->i_private;
+	struct super_block *sb = parent_inode->i_sb;
+	struct buffer_head *bh;
+	struct assoofs_dir_record_entry *record;
+	int i;
+	bh = sb_bread(sb,parent_info->data_block_number);
+	record = (struct assoofs_dir_record_entry *)bh->b_data;
+	for(i = 0; i < parent_info->dir_children_count;i++){
+		if(!strcmp(record->filename, child_dentry->d_name.name)){
+			struct inode *inode = assoofs_get_inode(sb,record->inode_no);
+			inode_init_owner(sb->s_user_ns,inode,parent_inode,((struct assoofs_inode_info *)inode->i_private)->mode);
+			d_add(child_dentry,inode);
+			return NULL;
+		}
+		record++;
+		printk("Pruebas");
+	}
 	printk(KERN_INFO "Lookup request\n");
-	return 0;
+	return NULL;
 }
 
 static int assoofs_create(struct user_namespace *mnt_userns, struct inode *dir, struct dentry *dentry, umode_t mode, bool excl){
+	struct inode *inode;
+	struct assoofs_inode_info *inode_info;
+	struct assoofs_inode_info *parent_inode_info;
+	struct assoofs_dir_record_entry *dir_contents;
+	struct super_block *sb;
+	struct buffer_head *bh;
+	uint64_t count;
 	printk(KERN_INFO "New file request\n");
+	sb = dir->i_sb;
+	count = ((struct assoofs_super_block_info *)sb->s_fs_info)->inodes_count;
+	inode = new_inode(sb);
+	inode->i_sb = sb;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_op = &assoofs_inode_ops;
+	inode->i_ino = count + 1;
+	
+	if(count > ASSOOFS_MAX_FILESYSTEM_OBJECTS_SUPPORTED -2){
+		printk(KERN_ERR "The value of count is greater than the maximun of objects supported.");
+		return -1;
+	}
+	
+	inode_info = kmalloc(sizeof(struct assoofs_inode_info),GFP_KERNEL);
+	inode_info->inode_no = inode->i_ino;
+	inode_info->file_size = 0;
+	inode->i_private = inode_info;
+	
+	inode->i_fop = &assoofs_file_operations;
+	
+	inode_init_owner(sb->s_user_ns,inode,dir,mode);
+	d_add(dentry,inode);
+	
+	assoofs_sb_get_a_freeblock(sb,&inode_info->data_block_number);
+	
+	parent_inode_info = dir->i_private;
+	bh = sb_bread(sb,parent_inode_info->data_block_number);
+	dir_contents = (struct assoofs_dir_record_entry *)bh->b_data;
+	dir_contents += parent_inode_info->dir_children_count;
+	dir_contents->inode_no = inode_info->inode_no;
+	
+	strcpy(dir_contents->filename, dentry->d_name.name);
+	mark_buffer_dirty(bh);
+	sync_dirty_buffer(bh);
+	brelse(bh);
+	
+	parent_inode_info->dir_children_count++;
+	assoofs_save_inode_info(sb,parent_inode_info);
+	
+	return 0;
+	
 	return 0;
 }
 
@@ -152,6 +224,57 @@ static void __exit assoofs_exit(void){
 }
 
 //===========================codigo======================================
+struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64_t inode_no){
+	struct assoofs_inode_info *inode_info = NULL;
+	struct buffer_head *bh;
+	struct assoofs_super_block_info *afs_sb = sb->s_fs_info;
+	struct assoofs_inode_info *buffer = NULL;
+	int i;
+	bh = sb_bread(sb,ASSOOFS_INODESTORE_BLOCK_NUMBER);
+	inode_info = (struct assoofs_inode_info *)bh->b_data;
+	for(i = 0; i < afs_sb->inodes_count; i++){
+		if(inode_info->inode_no == inode_no){
+			buffer = kmalloc(sizeof(struct assoofs_inode_info),GFP_KERNEL);
+			memcpy(buffer,inode_info,sizeof(*buffer));
+			break;
+		}
+		inode_info++;
+	}
+	brelse(bh);
+	return buffer;
+}
+
+static struct inode *assoofs_get_inode(struct super_block *sb, int ino){
+	struct assoofs_inode_info *inode_info;
+	struct inode *inode;
+	inode_info = assoofs_get_inode_info(sb,ino);
+	inode = new_inode(sb);
+	inode->i_ino =ino;
+	inode->i_sb = sb;
+	inode->i_op = &assoofs_inode_ops;
+	if(S_ISDIR(inode_info->mode)){
+		inode->i_fop = &assoofs_dir_operations;
+	}else if(S_ISREG(inode_info->mode)){
+		inode->i_fop = &assoofs_file_operations;
+	}else{
+		printk(KERN_ERR "Unknown inode type. Neither a directory nor a file.");
+	}
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_private = inode_info;
+	return inode;
+}
+
+int assoofs_sb_get_a_freeblock(struct super_block *sb, uint64_t *block){
+return 0;
+}
+void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode){
+}
+int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *inode_info){
+return 0;
+}
+
+
+
 //=======================================================================
 
 module_init(assoofs_init);

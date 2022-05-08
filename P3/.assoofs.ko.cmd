@@ -1,0 +1,1 @@
+cmd_/home/pablo/Escritorio/ASO/P3/assoofs.ko := ld -r  -m elf_x86_64  --build-id=sha1  -T scripts/module.lds -o /home/pablo/Escritorio/ASO/P3/assoofs.ko /home/pablo/Escritorio/ASO/P3/assoofs.o /home/pablo/Escritorio/ASO/P3/assoofs.mod.o;  true

@@ -28,7 +28,7 @@
  	uint64_t inode_no;
  	uint64_t data_block_number;
  	union{
- 		uint64_t fie_size;
+ 		uint64_t file_size;
  		uint64_t dir_children_count;
  	};
  };

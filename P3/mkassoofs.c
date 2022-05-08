@@ -16,8 +16,8 @@ static int write_superblock(int fd){
 		.version = 1,
 		.magic = ASSOOFS_MAGIC,
 		.block_size = ASSOOFS_DEFAULT_BLOCK_SIZE,
-		-inodes_count = WELCOMEFILE_INODE_NUMBER,
-		.free_blocks = (¨0) & ¨(15),
+		.inodes_count = WELCOMEFILE_INODE_NUMBER,
+		.free_blocks = (~0) & ~(15),
 	};
 	ssize_t ret;
 	
@@ -34,7 +34,7 @@ static int write_superblock(int fd){
 static int write_root_inode(int fd){
 	ssize_t ret;
 	
-	struct assofs_inode_info root_inode;
+	struct assoofs_inode_info root_inode;
 	
 	root_inode.mode = S_IFDIR;
 	root_inode.inode_no = ASSOOFS_ROOTDIR_INODE_NUMBER;
@@ -58,7 +58,7 @@ static int write_welcome_inode(int fd, const struct assoofs_inode_info *i){
 	
 	ret = write(fd, i, sizeof(*i));
 	if(ret != sizeof(*i)){
-		pritnf("The welcomefile inode was not written properly.\n");
+		printf("The welcomefile inode was not written properly.\n");
 		return -1;
 	}
 	printf("Welcome inode written succesfully.\n");
@@ -82,12 +82,12 @@ int write_dirent(int fd, const struct assoofs_dir_record_entry *record) {
 		printf("Written the rootdirectory datablock (name + inode_no pair for welcomefile) has failed.\n");
 		return -1;
 	}
-	pritnf("Root directory datablocks (name + inode_no pair for welcomefile) written succesfully.\n");
+	printf("Root directory datablocks (name + inode_no pair for welcomefile) written succesfully.\n");
 	
 	nbytes = ASSOOFS_DEFAULT_BLOCK_SIZE -sizeof(*record);
 	ret = lseek(fd,nbytes,SEEK_CUR);
 	if(ret == (off_t)-1){
-		pritnf("Writting the padding for rootdirectory children datablock has failed.\n");
+		printf("Writting the padding for rootdirectory children datablock has failed.\n");
 		return -1;
 	}
 	

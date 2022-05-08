@@ -1,15 +1,23 @@
  #include <stdio.h>
-       #include <stdlib.h>
-       #include <dlfcn.h>
-       #include <gnu/lib-names.h>  /* Defines LIBM_SO (which will be a
-                                      string such as "libm.so.6") */
+#include <stdlib.h>
+#include <dlfcn.h>
+#include <unistd.h>
+#include <gnu/lib-names.h> 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
        int
        main(void)
        {
+      		char cmd[25];
            void *handle;
            double (*cosine)(double);
            char *error;
-
+           
+	   printf("\nMemoria antes de emplear el dlopen()\n");
+	   sprintf(cmd , "cat /proc/%d/maps", getpid ());
+	   system(cmd);
+	   
            handle = dlopen(LIBM_SO, RTLD_LAZY);
            if (!handle) {
                fprintf(stderr, "%s\n", dlerror());
@@ -20,21 +28,6 @@
 
            cosine = (double (*)(double)) dlsym(handle, "cos");
 
-           /* According to the ISO C standard, casting between function
-              pointers and 'void *', as done above, produces undefined results.
-              POSIX.1-2001 and POSIX.1-2008 accepted this state of affairs and
-              proposed the following workaround:
-
-                  *(void **) (&cosine) = dlsym(handle, "cos");
-
-              This (clumsy) cast conforms with the ISO C standard and will
-              avoid any compiler warnings.
-
-              The 2013 Technical Corrigendum 1 to POSIX.1-2008 improved matters
-              by requiring that conforming implementations support casting
-              'void *' to a function pointer.  Nevertheless, some compilers
-              (e.g., gcc with the '-pedantic' option) may complain about the
-              cast used in this program. */
 
            error = dlerror();
            if (error != NULL) {
@@ -42,7 +35,15 @@
                exit(EXIT_FAILURE);
            }
 
-           printf("%f\n", (*cosine)(2.0));
+	   printf("\nMemoria durante el empleo de la libreria\n");
+	   sprintf(cmd , "cat /proc/%d/maps", getpid ());
+	   system(cmd);
+           
            dlclose(handle);
+          
+           printf("\nMemoria despues de emplear el dlclose()\n");
+	   sprintf(cmd , "cat /proc/%d/maps", getpid ());
+	   system(cmd);
+	   
            exit(EXIT_SUCCESS);
        }

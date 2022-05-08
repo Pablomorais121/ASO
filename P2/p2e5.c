@@ -4,6 +4,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
 
 void *handler(void *ptr){
 	sleep(2);

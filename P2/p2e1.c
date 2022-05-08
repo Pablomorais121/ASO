@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
+
 int gb;
 bool gbbt = true;
 int gb2 = 10;

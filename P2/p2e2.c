@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
 
 void funcion();
 

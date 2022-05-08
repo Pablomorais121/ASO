@@ -2,6 +2,10 @@
 #include <stdio.h>
 #include <unistd.h>
 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
+
 char cmd[25];
 
 void main(){

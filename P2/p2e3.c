@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+/*
+* Hecho por Pablo Morais Alvarez
+*/
 
 void main(){
 	

@@ -29,7 +29,7 @@ void main(){
     printf("Variable/función   Dirección              Tamaño\n");
     printf("            main   %p\n", main);
     printf("           errno   %p   %12ld\n", &errno, sizeof(errno));
-    printf("       	      gb   %p   %12ld\n", &gb, sizeof(gb));
+    printf("       	  gb   %p   %12ld\n", &gb, sizeof(gb));
     printf("            gbbt   %p   %12ld\n", &gbbt, sizeof(gbbt));
     printf("             gb2   %p   %12ld\n", &gb2, sizeof(gb2));
     printf("            gbbf   %p   %12ld\n", &gbbf, sizeof(gbbf));

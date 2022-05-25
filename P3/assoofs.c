@@ -58,9 +58,10 @@ ssize_t assoofs_read(struct file *filp, char __user *buf, size_t len, loff_t *pp
 ssize_t assoofs_write(struct file *filp, const char __user *buf, size_t len, loff_t *ppos){
 	struct assoofs_inode_info *inode_info = filp->f_path.dentry->d_inode->i_private;
 	struct buffer_head *bh;
-	struct super_block *sb;
+	struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
 	char *buffer;
 	printk(KERN_INFO "Write request\n");
+	
 	if(*ppos >= ASSOOFS_DEFAULT_BLOCK_SIZE) return 0;
 	
 	bh = sb_bread(filp->f_path.dentry->d_inode->i_sb, inode_info->data_block_number);
@@ -75,7 +76,7 @@ ssize_t assoofs_write(struct file *filp, const char __user *buf, size_t len, lof
 	
 	inode_info->file_size = *ppos;
 	assoofs_save_inode_info(sb,inode_info);
-
+	printk(KERN_INFO "Paso el save");
 	return len;
 }
 
@@ -433,9 +434,18 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	printk(KERN_INFO "Save inode info request");
 	bh =  sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
 	inode_pos = assoofs_search_inode_info(sb,(struct assoofs_inode_info *)bh->b_data,inode_info);
+	printk(KERN_INFO "Sale del search");
+	
+	printk(KERN_INFO "%lld",inode_pos->inode_no);
+	printk(KERN_INFO "%lld",inode_info->inode_no);
+	printk(KERN_INFO "%ld",sizeof(*inode_pos));
+	
+	
 	memcpy(inode_pos, inode_info, sizeof(*inode_pos));
+	
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	
 	return 0;
 }
 
@@ -446,8 +456,6 @@ struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, str
 		count ++;
 		start++;
 	}
-	printk(KERN_INFO "%llu" , ((struct assoofs_super_block_info *)sb->s_fs_info)->inodes_count);
-	printk(KERN_INFO "%llu" ,count);
 	if(start->inode_no == search->inode_no){
 		return start;
 	}else{

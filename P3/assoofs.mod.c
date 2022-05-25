@@ -31,6 +31,7 @@ __used __section("__versions") = {
 	{ 0xd63ee8ba, "generic_delete_inode" },
 	{ 0xe16ade6b, "kill_litter_super" },
 	{ 0xcbd4898c, "fortify_panic" },
+	{ 0x13c49cc2, "_copy_from_user" },
 	{ 0x43994848, "sync_dirty_buffer" },
 	{ 0xd56231fe, "mark_buffer_dirty" },
 	{ 0xe9bccd4a, "d_make_root" },
@@ -39,13 +40,16 @@ __used __section("__versions") = {
 	{ 0xa6a1a47d, "current_time" },
 	{ 0x5dfb552f, "new_inode" },
 	{ 0xe2d5255a, "strcmp" },
-	{ 0xc6b9d59e, "__brelse" },
 	{ 0x69ecc112, "kmem_cache_alloc_trace" },
 	{ 0x36c11c94, "kmalloc_caches" },
-	{ 0x4a9b759b, "__bread_gfp" },
 	{ 0x1f290272, "unregister_filesystem" },
 	{ 0x741bf5fb, "register_filesystem" },
 	{ 0x2db6c90e, "mount_bdev" },
+	{ 0xc6b9d59e, "__brelse" },
+	{ 0x2ea2c95c, "__x86_indirect_thunk_rax" },
+	{ 0x6b10bee1, "_copy_to_user" },
+	{ 0x88db9f48, "__check_object_size" },
+	{ 0x4a9b759b, "__bread_gfp" },
 	{ 0xc5850110, "printk" },
 	{ 0xbdfb6dbb, "__fentry__" },
 };
@@ -53,4 +57,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "0D5544FF2B00AA26E7F88E0");
+MODULE_INFO(srcversion, "4B949201E60760346E9D47C");

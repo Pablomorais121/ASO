@@ -414,14 +414,21 @@ void assoofs_save_sb_info(struct super_block *vsb){
 void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode){
 	struct buffer_head *bh;
 	struct assoofs_super_block_info *assoofs_sb = sb->s_fs_info;
+    struct assoofs_inode_info *inode_info;
+
 	printk(KERN_INFO "add inode info request");
 	
 	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
 	
-	inode = (struct assoofs_inode_info *) bh->b_data;
-	inode += assoofs_sb->inodes_count;
-	memcpy(inode, inode, sizeof(struct assoofs_inode_info));
-	
+	//inode = (struct assoofs_inode_info *) bh->b_data;
+	//inode += assoofs_sb->inodes_count;
+	//memcpy(inode, inode, sizeof(struct assoofs_inode_info));
+	// AQUI ESTAS SOBREESCRIBIENDO LO QUE RECIBES COMO ARGUMENTO
+    // TIENES QUE CREAR UN inode_info auxiliar
+    inode_info = (struct assoofs_inode_info *)bh->b_data;
+    inode_info += assoofs_sb->inodes_count;
+    memcpy(inode_info, inode, sizeof(struct assoofs_inode_info));
+
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
 	
@@ -436,9 +443,9 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	inode_pos = assoofs_search_inode_info(sb,(struct assoofs_inode_info *)bh->b_data,inode_info);
 	printk(KERN_INFO "Sale del search");
 	
-	printk(KERN_INFO "%lld",inode_pos->inode_no);
-	printk(KERN_INFO "%lld",inode_info->inode_no);
-	printk(KERN_INFO "%ld",sizeof(*inode_pos));
+	printk(KERN_INFO "inodo encontrado: %lld\n",inode_pos->inode_no);
+	printk(KERN_INFO "inodo buscado: %lld\n",inode_info->inode_no);
+	//printk(KERN_INFO "%ld",sizeof(*inode_pos));
 	
 	
 	memcpy(inode_pos, inode_info, sizeof(*inode_pos));
@@ -446,6 +453,8 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
 	
+    brelse(bh);
+
 	return 0;
 }
 
@@ -456,6 +465,7 @@ struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, str
 		count ++;
 		start++;
 	}
+    printk(KERN_INFO "search INODO: %llu\n", start->inode_no);
 	if(start->inode_no == search->inode_no){
 		return start;
 	}else{

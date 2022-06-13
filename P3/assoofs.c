@@ -140,8 +140,6 @@ static struct inode_operations assoofs_inode_ops = {
 	.create = assoofs_create,
 	.lookup = assoofs_lookup,
 	.mkdir = assoofs_mkdir,
-	.rm = assoofs_remove,
-	.mv = assoofs_move,
 };
 
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags){
@@ -570,11 +568,6 @@ void assoofs_destroy_inode(struct inode *inode){
 	kmem_cache_free(assoofs_inode_cache,inode_info);
 }
 
-void assoofs_remove(){
-}
-
-void assoofs_move(){
-}
 //=======================================================================
 
 module_init(assoofs_init);

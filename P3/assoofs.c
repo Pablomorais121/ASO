@@ -23,8 +23,16 @@ void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *inode_info);
 void assoofs_save_sb_info(struct super_block *vsb);
 struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, struct assoofs_inode_info *start, struct assoofs_inode_info *search);
-
 static int assoofs_iterate(struct file *filp, struct dir_context *ctx);
+//prototipos parte opcional==============================================
+static struct kmem_cache *assoofs_inode_cache;
+void assoofs_destroy_inode(struct inode *inode);
+
+static DEFINE_MUTEX(assoofs_sb_lock);
+int retM;
+
+void assoofs_remove();
+void assoofs_move();
 //=======================================================================
 //Operaciones sobre ficheros
 
@@ -71,8 +79,14 @@ ssize_t assoofs_write(struct file *filp, const char __user *buf, size_t len, lof
 	if(copy_from_user(buffer,buf,len) != 0) return -1;
 	
 	*ppos+=len;
+	
+	 retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	 if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
 	
 	inode_info->file_size = *ppos;
 	assoofs_save_inode_info(sb,inode_info);
@@ -126,6 +140,8 @@ static struct inode_operations assoofs_inode_ops = {
 	.create = assoofs_create,
 	.lookup = assoofs_lookup,
 	.mkdir = assoofs_mkdir,
+	.rm = assoofs_remove,
+	.mv = assoofs_move,
 };
 
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags){
@@ -160,7 +176,9 @@ static int assoofs_create(struct user_namespace *mnt_userns, struct inode *dir, 
 	struct buffer_head *bh;
 	uint64_t count;
 	printk(KERN_INFO "New file request\n");
+	
 	sb = dir->i_sb;
+
 	count = ((struct assoofs_super_block_info *)sb->s_fs_info)->inodes_count;
 	inode = new_inode(sb);
 	inode->i_sb = sb;
@@ -173,7 +191,7 @@ static int assoofs_create(struct user_namespace *mnt_userns, struct inode *dir, 
 		return -1;
 	}
 	
-	inode_info = kmalloc(sizeof(struct assoofs_inode_info),GFP_KERNEL);
+	inode_info = kmem_cache_alloc(assoofs_inode_cache,GFP_KERNEL);
 	inode_info->inode_no = inode->i_ino;
 	inode_info->file_size = 0;
 	inode_info->mode = mode;
@@ -189,14 +207,23 @@ static int assoofs_create(struct user_namespace *mnt_userns, struct inode *dir, 
 	assoofs_add_inode_info(sb,inode_info);
 	
 	parent_inode_info = dir->i_private;
+	
 	bh = sb_bread(sb,parent_inode_info->data_block_number);
+	
 	dir_contents = (struct assoofs_dir_record_entry *)bh->b_data;
 	dir_contents += parent_inode_info->dir_children_count;
 	dir_contents->inode_no = inode_info->inode_no;
 	
 	strcpy(dir_contents->filename, dentry->d_name.name);
+	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
+	
 	brelse(bh);
 	
 	parent_inode_info->dir_children_count++;
@@ -227,7 +254,7 @@ static int assoofs_mkdir(struct user_namespace *mnt_userns, struct inode *dir, s
 		return -1;
 	}
 	
-	inode_info = kmalloc(sizeof(struct assoofs_inode_info),GFP_KERNEL);
+	inode_info = kmem_cache_alloc(assoofs_inode_cache,GFP_KERNEL);
 	inode_info->inode_no = inode->i_ino;
 	inode_info->dir_children_count = 0;
 	inode_info->mode = S_IFDIR | mode;
@@ -248,8 +275,16 @@ static int assoofs_mkdir(struct user_namespace *mnt_userns, struct inode *dir, s
 	dir_contents->inode_no = inode_info->inode_no;
 	
 	strcpy(dir_contents->filename, dentry->d_name.name);
+	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
+
+	
 	brelse(bh);
 	
 	parent_inode_info->dir_children_count++;
@@ -261,7 +296,7 @@ static int assoofs_mkdir(struct user_namespace *mnt_userns, struct inode *dir, s
 //Operaciones sobre el superbloque
 
 static const struct super_operations assoofs_sops = {
-	.drop_inode = generic_delete_inode,
+	.destroy_inode = assoofs_destroy_inode,
 };
 
 //inicializacion del superbloque
@@ -272,7 +307,14 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent){
 	struct inode *root_inode;
 	printk(KERN_INFO "assoofs_fill_super request\n");
 // 1.- Leer la informaci´on persistente del superbloque del dispositivo de bloque
+
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	bh = sb_bread(sb, ASSOOFS_SUPERBLOCK_BLOCK_NUMBER);
+	mutex_unlock(&assoofs_sb_lock);
+	
 	assoofs_sb = (struct assoofs_super_block_info *)bh->b_data;
 	brelse(bh);
 // 2.- Comprobar los parametros del superbloque
@@ -324,7 +366,12 @@ static int __init assoofs_init(void) {
 	int ret;
 	printk(KERN_INFO "assoofs_init request\n");
 	ret = register_filesystem(&assoofs_type);
+	assoofs_inode_cache = kmem_cache_create("assoofs_inode_cache", sizeof(struct assoofs_inode_info),0,(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD),NULL);
 	//control de errores a partir del valor de ret
+	if(ret != 0){
+		printk(KERN_ERR "Error in the assoofs_init operation");
+	}
+	
 	return ret;
 }
 
@@ -332,7 +379,11 @@ static void __exit assoofs_exit(void){
 	int ret;
 	printk(KERN_INFO "assoofs_exit request\n");
 	ret = unregister_filesystem(&assoofs_type);
+	kmem_cache_destroy(assoofs_inode_cache);
 	//control de errores a partir del valor de ret
+	if(ret != 0){
+		printk(KERN_ERR "Error in assoofs_exit, file system not found");
+	}
 }
 
 //===========================codigo======================================
@@ -343,11 +394,18 @@ struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64
 	struct assoofs_inode_info *buffer = NULL;
 	int i;
 	printk(KERN_INFO "get inode info request");
+	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	bh = sb_bread(sb,ASSOOFS_INODESTORE_BLOCK_NUMBER);
+	mutex_unlock(&assoofs_sb_lock);
+	
 	inode_info = (struct assoofs_inode_info *)bh->b_data;
 	for(i = 0; i < afs_sb->inodes_count; i++){
 		if(inode_info->inode_no == inode_no){
-			buffer = kmalloc(sizeof(struct assoofs_inode_info),GFP_KERNEL);
+			buffer = kmem_cache_alloc(assoofs_inode_cache,GFP_KERNEL);
 			memcpy(buffer,inode_info,sizeof(*buffer));
 			break;
 		}
@@ -404,11 +462,22 @@ void assoofs_save_sb_info(struct super_block *vsb){
 	struct buffer_head *bh;
 	struct assoofs_super_block_info *sb = vsb->s_fs_info;
 	printk(KERN_INFO "Save sb info request");
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	bh = sb_bread(vsb, ASSOOFS_SUPERBLOCK_BLOCK_NUMBER);
 	bh-> b_data = (char *)sb;
+	mutex_unlock(&assoofs_sb_lock);
 	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
+	
 	brelse(bh);
 }
 void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode){
@@ -418,7 +487,12 @@ void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 
 	printk(KERN_INFO "add inode info request");
 	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
+	mutex_unlock(&assoofs_sb_lock);
 	
 	//inode = (struct assoofs_inode_info *) bh->b_data;
 	//inode += assoofs_sb->inodes_count;
@@ -429,8 +503,13 @@ void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *i
     inode_info += assoofs_sb->inodes_count;
     memcpy(inode_info, inode, sizeof(struct assoofs_inode_info));
 
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
 	
 	assoofs_sb->inodes_count++;
 	assoofs_save_sb_info(sb);
@@ -439,7 +518,14 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	struct buffer_head *bh;
 	struct assoofs_inode_info *inode_pos;
 	printk(KERN_INFO "Save inode info request");
+	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	bh =  sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
+	mutex_unlock(&assoofs_sb_lock);
+	
 	inode_pos = assoofs_search_inode_info(sb,(struct assoofs_inode_info *)bh->b_data,inode_info);
 	printk(KERN_INFO "Sale del search");
 	
@@ -450,8 +536,13 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	
 	memcpy(inode_pos, inode_info, sizeof(*inode_pos));
 	
+	retM = mutex_lock_interruptible(&assoofs_sb_lock);
+	if(retM != 0){
+	 	printk(KERN_ERR "The mutex wasnt aplied\n");
+	 }
 	mark_buffer_dirty(bh);
 	sync_dirty_buffer(bh);
+	mutex_unlock(&assoofs_sb_lock);
 	
     brelse(bh);
 
@@ -471,6 +562,18 @@ struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, str
 	}else{
 		return NULL;
 	}
+}
+//funciones de la parte opcional=========================================
+void assoofs_destroy_inode(struct inode *inode){
+	struct assoofs_inode *inode_info = inode->i_private;
+	printk(KERN_INFO "Freing private data of inode %p (%lu)\n",inode_info,inode->i_ino);
+	kmem_cache_free(assoofs_inode_cache,inode_info);
+}
+
+void assoofs_remove(){
+}
+
+void assoofs_move(){
 }
 //=======================================================================
 
